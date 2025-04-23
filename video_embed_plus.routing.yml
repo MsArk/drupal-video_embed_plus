@@ -1,0 +1,7 @@
+video_embed_plus.settings:
+  path: '/admin/config/media/video-embed-plus'
+  defaults:
+    _form: '\Drupal\video_embed_plus\Form\VideoEmbedPlusSettingsForm'
+    _title: 'Video Embed Plus settings'
+  requirements:
+    _permission: 'administer site configuration'

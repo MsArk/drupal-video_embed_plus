@@ -1,0 +1,9 @@
+name: 'Video Embed Plus'
+type: module
+description: 'Generates a video thumbnail token and provides a configurable interface to automatically add a video embed field (field_video_embed) to selected content types. Supports YouTube and Vimeo.'
+package: MsArkNet
+core_version_requirement: ^10 || ^11
+configure: video_embed_plus.settings
+dependencies:
+  - token
+  - video_embed_field

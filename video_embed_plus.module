@@ -1,0 +1,128 @@
+<?php
+
+/**
+ * @file
+ * Module file for video_embed_plus.
+ */
+
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_token_info().
+ */
+function video_embed_plus_token_info() {
+  return [
+    'tokens' => [
+      'node' => [
+        'video_thumbnail' => [
+          'name' => t('Video thumbnail URL'),
+          'description' => t('Returns the thumbnail URL of the video in the field_video_embed field (YouTube or Vimeo).'),
+        ],
+      ],
+    ],
+  ];
+}
+
+/**
+ * Implements hook_tokens().
+ */
+function video_embed_plus_tokens($type, $tokens, array $data = [], array $options = []) {
+  $replacements = [];
+
+  if ($type === 'node' && !empty($data['node']) && $data['node'] instanceof NodeInterface) {
+    $node = $data['node'];
+    $video_url = $node->hasField('field_video_embed') && !$node->get('field_video_embed')->isEmpty()
+      ? (string) $node->get('field_video_embed')->value
+      : '';
+
+    foreach ($tokens as $name => $original) {
+      if ($name === 'video_thumbnail') {
+        $replacements[$original] = _video_embed_plus_get_video_thumbnail_url($video_url);
+      }
+    }
+  }
+
+  return $replacements;
+}
+
+/**
+ * Determines the appropriate thumbnail URL based on the video provider.
+ */
+function _video_embed_plus_get_video_thumbnail_url(string $video_url): string {
+  if (empty($video_url)) {
+    return '';
+  }
+
+  if (_video_embed_plus_is_youtube_url($video_url)) {
+    return _video_embed_plus_get_youtube_thumbnail($video_url);
+  }
+
+  if (_video_embed_plus_is_vimeo_url($video_url)) {
+    return _video_embed_plus_get_vimeo_thumbnail($video_url);
+  }
+
+  return '';
+}
+
+/**
+ * Checks if the given URL is a YouTube video.
+ */
+function _video_embed_plus_is_youtube_url(string $url): bool {
+  return preg_match('/(youtu\\.be\\/|youtube\\.com\\/(watch\\?v=|embed\\/|shorts\\/))/', $url);
+}
+
+/**
+ * Returns the YouTube video thumbnail URL.
+ */
+function _video_embed_plus_get_youtube_thumbnail(string $url): string {
+  if (preg_match('/(?:youtu\\.be\\/|youtube\\.com\\/(?:watch\\?v=|embed\\/|shorts\\/))([^\&\?\\/]+)/', $url, $matches)) {
+    $video_id = $matches[1];
+    return 'https://img.youtube.com/vi/' . $video_id . '/hqdefault.jpg';
+  }
+  return '';
+}
+
+/**
+ * Checks if the given URL is a Vimeo video.
+ */
+function _video_embed_plus_is_vimeo_url(string $url): bool {
+  return preg_match('/vimeo\\.com\\/\\d+/', $url);
+}
+
+/**
+ * Returns the Vimeo video thumbnail URL via their oEmbed API.
+ */
+function _video_embed_plus_get_vimeo_thumbnail(string $url): string {
+  $cid = 'video_embed_plus:vimeo:' . md5($url);
+  $cache = \Drupal::cache()->get($cid);
+
+  if ($cache && isset($cache->data)) {
+    return $cache->data;
+  }
+
+  try {
+    $api_url = 'https://vimeo.com/api/oembed.json?url=' . urlencode($url);
+    $response = \Drupal::httpClient()->get($api_url, [
+      'headers' => ['Accept' => 'application/json'],
+      'timeout' => 3,
+    ]);
+
+    if ($response->getStatusCode() === 200) {
+      $data = json_decode($response->getBody(), true);
+      $thumbnail_url = $data['thumbnail_url'] ?? '';
+
+      // Cache for 6 hours
+      \Drupal::cache()->set($cid, $thumbnail_url, time() + 21600);
+
+      return $thumbnail_url;
+    }
+  }
+  catch (\Exception $e) {
+    \Drupal::logger('video_embed_plus')->warning(
+      'Failed to fetch Vimeo thumbnail: @message',
+      ['@message' => $e->getMessage()]
+    );
+  }
+
+  return '';
+}
